@@ -116,28 +116,33 @@ async function runGeminiRequest(
   userPrompt: string
 ): Promise<GeminiInvestigationResult> {
   const timestamp = new Date().toISOString();
-  
+  const modelsToTry = [GEMINI_MODEL, 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite']
+    .filter((v, i, a) => a.indexOf(v) === i);
+
   let response: any;
-  try {
-    response = await genAI.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      config: {
-        systemInstruction,
-        tools: [{ googleSearch: {} }],
-        temperature: 0.1,
-      },
-    });
-  } catch (searchErr: any) {
-    console.warn('[GeminiInvestigator] googleSearch tool failed or not supported by key, retrying without tool:', searchErr?.message || searchErr);
-    response = await genAI.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
-      config: {
-        systemInstruction,
-        temperature: 0.1,
-      },
-    });
+  let successfulModel = GEMINI_MODEL;
+  let lastError: any = null;
+
+  for (const modelName of modelsToTry) {
+    try {
+      response = await genAI.models.generateContent({
+        model: modelName,
+        contents: [{ role: 'user', parts: [{ text: userPrompt }] }],
+        config: {
+          systemInstruction,
+          temperature: 0.1,
+        },
+      });
+      successfulModel = modelName;
+      break;
+    } catch (err: any) {
+      lastError = err;
+      console.warn(`[GeminiInvestigator] Model ${modelName} notice: ${err?.message?.slice(0, 80) || err}. Trying next fallback model...`);
+    }
+  }
+
+  if (!response) {
+    throw lastError || new Error('All candidate Gemini models failed.');
   }
   
   const text = response.text || '';
@@ -158,7 +163,7 @@ async function runGeminiRequest(
     }
   }
   
-  return normalizeGeminiResponse(parsed, timestamp);
+  return normalizeGeminiResponse(parsed, timestamp, successfulModel);
 }
 
 function buildSystemInstruction(): string {
@@ -295,7 +300,7 @@ Return ONLY the JSON object. No other text.`;
   return prompt;
 }
 
-function normalizeGeminiResponse(parsed: any, timestamp: string): GeminiInvestigationResult {
+function normalizeGeminiResponse(parsed: any, timestamp: string, modelUsed: string = GEMINI_MODEL): GeminiInvestigationResult {
   let evidenceCounter = 0;
   const nextEvidenceId = () => `GEM-E-${String(++evidenceCounter).padStart(3, '0')}`;
   
@@ -356,7 +361,7 @@ function normalizeGeminiResponse(parsed: any, timestamp: string): GeminiInvestig
   
   return {
     engine: 'GEMINI',
-    geminiModel: GEMINI_MODEL,
+    geminiModel: modelUsed,
     investigationStatus: 'COMPLETED',
     investigationTimestamp: timestamp,
     verdict: sanitizeVerdict(parsed.verdict),

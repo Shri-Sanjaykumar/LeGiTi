@@ -1385,14 +1385,18 @@ export class GeminiFlashProvider implements IAIProvider {
   }
 
   private async generateWithFallback(generateFn: (modelName: string) => Promise<any>): Promise<any> {
-    const primary = this.model;
-    const fallback = primary.includes('flash') ? 'gemini-3.8-flash-lite' : 'gemini-3.8-flash';
-    try {
-      return await generateFn(primary);
-    } catch (primaryErr: any) {
-      console.warn(`[GeminiFlashProvider] Primary model ${primary} request notice: ${primaryErr?.message || primaryErr}. Retrying with ${fallback}...`);
-      return await generateFn(fallback);
+    const candidateModels = [this.model, 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite']
+      .filter((v, i, a) => a.indexOf(v) === i);
+    let lastErr: any = null;
+    for (const m of candidateModels) {
+      try {
+        return await generateFn(m);
+      } catch (err: any) {
+        lastErr = err;
+        console.warn(`[GeminiFlashProvider] Model ${m} request notice: ${err?.message?.slice(0, 80) || err}. Trying next fallback model...`);
+      }
     }
+    throw lastErr;
   }
 
   async generateSynthesis(input: AISynthesisInput): Promise<AISynthesisOutput> {
