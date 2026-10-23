@@ -230,7 +230,9 @@ export function extractPdfTextViaWorker(buffer: Buffer): string {
       stdio: ['ignore', 'pipe', 'ignore'],
       env,
     });
-    const parsed = JSON.parse(stdout);
+    const jsonMatch = stdout.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return '';
+    const parsed = JSON.parse(jsonMatch[0]);
     return parsed.text || '';
   } catch (err: any) {
     console.warn(`[documentService] PDF worker note: ${err?.message || err}`);
@@ -408,23 +410,29 @@ export function extractDocumentSignals(
     }
   }
 
-  // Pattern B: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited, Clinchsoft Technologies, Tata Motors Ltd)
+  // Pattern B: Internship / employment program at company (e.g. Clinchsoft Technologies, Ementora Group of Companies, QSkill)
   if (!detectedCompanyName) {
-    const legalMatch = text.match(/(?:application\s+(?:had\s+)?with|employment\s+with|appointment\s+at|offer\s+from)\s+([A-Z][A-Za-z0-9 &.,'-]{1,35}?(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions))/i)
-      || text.match(/\b([A-Z][A-Za-z0-9&'-]+(?:\s+[A-Z][A-Za-z0-9&'-]+){0,3}\s+(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Enterprises|Infotech|Services|Global|Consultancy))\b/i);
+    const programMatch = text.match(/(?:(?:selected|selection)\s+for\s+(?:the\s+)?(?:upcoming\s+)?(?:[A-Za-z0-9\s-]+\s+)?internship\s+(?:program\s+)?(?:at|with)|internship\s+(?:for\s+[^\n.,]+?\s+)?(?:at|with)|internship\s+program\s+(?:at|with)|employment\s+with\s+(?!us\b|our\b|the\s+company\b)|position\s+at)\s+([A-Z0-9][A-Za-z0-9&,' -]{2,55})/i);
+    if (programMatch) {
+      const firstLine = programMatch[1].split(/[\r\n.]/)[0].trim();
+      detectedCompanyName = firstLine
+        .replace(/,\s*(?:commencing|as\s+(?:an?|the)|effective|effective\s+from|from|for|on|under).*$/i, '')
+        .trim();
+    }
+  }
+
+  // Pattern C: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited, For Squarcell Resource India Pvt. Ltd, InterGlobe Aviation Limited)
+  if (!detectedCompanyName) {
+    const legalMatch = text.match(/(?:(?:\r?\n|^)\s*For,?\s+|on\s+behalf\s+of\s+|application\s+(?:had\s+)?with|employment\s+with\s+(?!us\b|our\b|the\s+company\b)|appointment\s+at|offer\s+from)\s+([A-Z][A-Za-z0-9 &.,'-]{1,45}?(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Group\s+of\s+Companies))/i)
+      || text.match(/\b([A-Z][A-Za-z0-9&'-]+(?:\s+[A-Z][A-Za-z0-9&'-]+){0,4}\s+(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Enterprises|Infotech|Services|Global|Consultancy|Group\s+of\s+Companies|Aviation\s+Limited))\b/i);
     if (legalMatch) detectedCompanyName = legalMatch[1].trim();
   }
 
-  // Pattern C: Internship / employment program at company
+  // Pattern D: Formal sign-off entity (Yours truly Clinchsoft Technologies, Founder & CEO Ementora)
   if (!detectedCompanyName) {
-    const programMatch = text.match(/(?:Internship\s+Program\s+(?:at|with)|employment\s+with|position\s+at)\s+([A-Z0-9][A-Za-z0-9&.,' -]{2,45})/i);
-    if (programMatch) detectedCompanyName = programMatch[1].trim().replace(/,\s*commencing.*$/i, '');
-  }
-
-  // Pattern D: Formal sign-off entity (Yours truly Clinchsoft Technologies)
-  if (!detectedCompanyName) {
-    const signoffMatch = text.match(/(?:Yours\s+(?:truly|faithfully|sincerely)|Warm\s+regards|Regards)[,\s\n]+([A-Z][A-Za-z0-9&.,' -]{2,45})/i);
-    if (signoffMatch && !/(?:hr|manager|director|team|candidate)/i.test(signoffMatch[1])) {
+    const signoffMatch = text.match(/(?:Yours\s+(?:truly|faithfully|sincerely)|Warm\s+regards|Regards)[,\s\n]+([A-Z][A-Za-z0-9&.,' -]{2,45})/i)
+      || text.match(/(?:Founder\s+&\s+CEO|Director|HR\s+Manager|Authori[sz]ed\s+Signatory)[,\s\n]+([A-Z][A-Za-z0-9&.,' -]{2,45})/i);
+    if (signoffMatch && !/(?:hr|manager|director|team|candidate|regards)/i.test(signoffMatch[1])) {
       detectedCompanyName = signoffMatch[1].trim();
     }
   }
@@ -466,6 +474,7 @@ export function extractDocumentSignals(
   }
 
   if (detectedCompanyName) {
+    detectedCompanyName = detectedCompanyName.split(/[\r\n]/)[0].trim();
     detectedCompanyName = detectedCompanyName.replace(/^(?:the\s+upcoming\s+)?(?:internship\s+program\s+(?:at|with)|employment\s+with|position\s+at)\s+/i, '').trim();
     if (isFilenameOrPlaceholder(detectedCompanyName)) {
       detectedCompanyName = undefined;

@@ -746,12 +746,12 @@ export async function runScanPipeline(params: ExecuteScanParams): Promise<Legiti
     },
     claims: claimLedger.claims,
     ocrFindings: docResult?.suspicious_patterns,
-    mlEvaluation: {
+    mlEvaluation: process.env.ENABLE_ML_SCORING === 'true' ? {
       ml_probability: mlPrediction.ml_probability,
       prediction: mlPrediction.prediction,
       algorithm: mlPrediction.algorithm,
       topFeatures: mlPrediction.topFeatures || (mlPrediction as any).top_features,
-    },
+    } : undefined,
     externalEvidence: evidence.map(e => ({
       source: e.source_name || e.category || 'External',
       finding: e.title || e.evidence_text || '',

@@ -1385,7 +1385,7 @@ export class GeminiFlashProvider implements IAIProvider {
   }
 
   private async generateWithFallback(generateFn: (modelName: string) => Promise<any>): Promise<any> {
-    const candidateModels = [this.model, 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite']
+    const candidateModels = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite', this.model, 'gemini-3.5-flash']
       .filter((v, i, a) => a.indexOf(v) === i);
     let lastErr: any = null;
     for (const m of candidateModels) {

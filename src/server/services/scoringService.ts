@@ -46,7 +46,7 @@ export const DEFAULT_SCORING_WEIGHTS: ScoringWeights = {
   recruiter_email:          0.10,
   financial_fee_safety:     0.20,  // HIGHEST: payment demand is the #1 fraud signal
   certificate_verification: 0.05,
-  ml_probability:           0.10,
+  ml_probability:           0.10,  // Controlled dynamically via isMLActive
   community_evidence:       0.05,
   threat_intelligence:      0.05,
   consistency_conflict:     0.10,
@@ -512,10 +512,11 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
   }
 
   // ============================================================================
-  // 7. ML Fraud Model Score (Weight: 10%)
+  // 7. ML Fraud Model Score (Weight: 0% / Advisory Only)
   // ============================================================================
   const mlEvidence = evidenceList.filter(e => (e.category as any) === 'ML_MODEL' || e.category === 'DOCUMENT');
-  const isMLActive = Boolean(
+  // Deactivated by default to protect accuracy against naive keyword false-negatives.
+  const isMLActive = process.env.ENABLE_ML_SCORING === 'true' && Boolean(
     mlPrediction &&
     mlPrediction.model_loaded !== false &&
     mlPrediction.prediction !== 'ML_UNAVAILABLE' &&
@@ -524,8 +525,8 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
 
   let mlScore = 0;
   let mlConfidence = 0;
-  let mlStatus: ScoreComponentBreakdown['status'] = 'UNVERIFIED';
-  let mlReason = "Supervised ML pattern evaluation unavailable.";
+  let mlStatus: ScoreComponentBreakdown['status'] = 'NOT_APPLICABLE';
+  let mlReason = "Supervised bag-of-words ML scoring deactivated to protect deterministic accuracy. Verification relies strictly on authoritative MCA21, ICANN RDAP, financial fee engine, and Gemini forensic cross-examination.";
 
   if (isMLActive && mlPrediction) {
     mlScore = Math.round((1 - mlPrediction.fraudProbability) * 100);
@@ -1597,6 +1598,24 @@ export function buildStandardAssessments(
 
     // 9. Machine Learning Fraud Classifier
     (() => {
+      if (process.env.ENABLE_ML_SCORING !== 'true') {
+        return makeAssessment(
+          'ml_fraud_pattern',
+          'Machine Learning Fraud Classifier (Deactivated)',
+          50,
+          'Supervised bag-of-words ML scoring deactivated to protect deterministic accuracy. Verification relies strictly on authoritative MCA21, ICANN RDAP, financial fee engine, and Gemini forensic cross-examination.',
+          'Legacy bag-of-words classifiers produce false negatives on novel deceptive formats. Scoring reliance is strictly shifted to verified statutory registries, threat feeds, and deep multimodal reasoning.',
+          'Low',
+          'Rely on MCA21 corporate registry, WHOIS domain age, and Gemini forensic cross-examination.',
+          {
+            confidence_level: 0,
+            algorithm: 'Deactivated (Accuracy Protection)',
+            model_version: 'bypassed',
+            fraud_probability: 0.5,
+          }
+        );
+      }
+
       let ml = inputs.mlPrediction;
       if (!ml || ml.prediction === 'ML_UNAVAILABLE' || ml.model_loaded === false || Boolean(ml.error)) {
         const textToAnalyze = inputs.documentData?.extracted_text ||

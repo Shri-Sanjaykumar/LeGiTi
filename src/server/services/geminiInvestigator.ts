@@ -116,7 +116,7 @@ async function runGeminiRequest(
   userPrompt: string
 ): Promise<GeminiInvestigationResult> {
   const timestamp = new Date().toISOString();
-  const modelsToTry = [GEMINI_MODEL, 'gemini-3.5-flash', 'gemini-flash-lite-latest', 'gemini-3.1-flash-lite']
+  const modelsToTry = ['gemini-flash-lite-latest', 'gemini-3.1-flash-lite', GEMINI_MODEL, 'gemini-3.5-flash']
     .filter((v, i, a) => a.indexOf(v) === i);
 
   let response: any;

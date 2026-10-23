@@ -1,6 +1,11 @@
 const fs = require('fs');
 
 async function main() {
+  const origWarn = console.warn;
+  const origLog = console.log;
+  console.warn = () => {};
+  console.log = () => {};
+
   try {
     let buf;
     const filePath = process.argv[2];
@@ -16,7 +21,7 @@ async function main() {
     }
 
     const { PDFParse } = require('pdf-parse');
-    const parser = new PDFParse(new Uint8Array(buf));
+    const parser = new PDFParse(new Uint8Array(buf), { verbosity: 0 });
     await parser.load();
     const result = await parser.getText();
     const text = result?.text || '';
@@ -25,7 +30,6 @@ async function main() {
     process.stdout.write(JSON.stringify({ text, numPages, length: text.length }));
     process.exit(0);
   } catch (err) {
-    process.stderr.write(String(err?.message || err));
     process.stdout.write(JSON.stringify({ text: '', error: String(err?.message || err) }));
     process.exit(0);
   }

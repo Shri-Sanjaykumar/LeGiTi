@@ -336,7 +336,7 @@ export function isFilenameOrPlaceholder(name?: string): boolean {
   if (s.length < 2) return true;
 
   // Generic placeholders
-  if (/^(?:unknown(?:\s*(?:organization|company|entity))?|uploaded\s*document|unnamed\s*document|sample\s*offer|test\s*doc|image|file|screenshot|scan|untitled|doc|n\/a|none|null|undefined)$/i.test(s)) return true;
+  if (/^(?:unknown(?:\s*(?:organization|company|entity))?|uploaded\s*document|unnamed\s*document|sample\s*offer|test\s*doc|image|file|screenshot|scan|untitled|doc|n\/a|none|null|undefined|upcoming)$/i.test(s)) return true;
   if (/^corporate\s+entity$/i.test(s) || /^investigated\s+(?:organization|entity)$/i.test(s)) return true;
 
   // File names, images, timestamps

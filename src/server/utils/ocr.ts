@@ -67,15 +67,15 @@ export async function analyzeDocumentDeepForensics(
 
       let response: any;
       const candidateModels = [
-        process.env.GEMINI_MODEL || 'gemini-3.8-flash',
-        'gemini-3.8-flash-lite',
-        'gemini-2.5-flash'
-      ];
+        process.env.GEMINI_MODEL || 'gemini-3.5-flash',
+        'gemini-flash-lite-latest',
+        'gemini-3.1-flash-lite',
+      ].filter((v, i, a) => a.indexOf(v) === i);
 
       for (const m of candidateModels) {
         try {
           const timeoutPromise = new Promise((_, reject) =>
-            setTimeout(() => reject(new Error(`Timeout on model ${m}`)), 4000)
+            setTimeout(() => reject(new Error(`Timeout on model ${m}`)), 15000)
           );
           const apiPromise = client.models.generateContent({
             model: m,
