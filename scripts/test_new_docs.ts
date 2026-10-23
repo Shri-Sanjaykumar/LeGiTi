@@ -61,7 +61,15 @@ async function testDoc(fileName: string) {
 }
 
 async function main() {
-  await testDoc('Welcome_Shri_Sanjaykumar_V_20261016_212601_534155.pdf');
+  const files = [
+    'Welcome_Shri_Sanjaykumar_V_20261016_212601_534155.pdf',
+    'Welcome Letter_Shri_Sanjaykumar_V_20260317_052819.pdf',
+    'emantra.pdf',
+    'qskill.pdf'
+  ];
+  for (const f of files) {
+    await testDoc(f);
+  }
 }
 
 main().catch(console.error);

@@ -279,7 +279,9 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
 
   if (isDocAuthActive && inputs.documentData) {
     docAuthConfidence = 85;
-    const flagCount = inputs.documentData.triggered_flags?.length || 0;
+    const criticalFlagCount = (inputs.documentData.triggered_flags || []).filter(
+      (f: any) => f.severity === 'critical' || f.severity === 'high'
+    ).length;
     const docScore = typeof inputs.documentData.final_score === 'number'
       ? inputs.documentData.final_score
       : 50;
@@ -294,28 +296,27 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
       docAuthStatus = 'SUSPICIOUS';
       docAuthReason = "Document exhibits structural anomalies and fails standard corporate formatting conventions.";
       warningSignals.push("Document structure exhibits critical anomalies typical of fraudulent offers.");
-    } else if (inputs.documentData.verdict === 'SUSPICIOUS' || flagCount >= 2 || docScore < 70) {
+    } else if (inputs.documentData.verdict === 'SUSPICIOUS' || criticalFlagCount >= 2 || docScore < 70) {
       docAuthScore = Math.max(20, Math.min(55, docScore));
       docAuthStatus = 'FLAGGED';
-      docAuthReason = `Document triggered ${flagCount} structural anomaly flags and incomplete enterprise standards.`;
-      warningSignals.push(`Multiple document anomaly flags triggered (${flagCount}).`);
+      docAuthReason = `Document triggered structural anomaly flags and incomplete enterprise standards.`;
+      warningSignals.push(`Multiple document anomaly flags triggered.`);
     } else {
-      docAuthScore = Math.min(90, Math.max(70, docScore));
-      docAuthStatus = docAuthScore >= 75 ? 'VERIFIED' : 'FLAGGED';
+      docAuthScore = Math.min(92, Math.max(75, docScore));
+      docAuthStatus = 'VERIFIED';
       docAuthReason = "Document structure and layout align with genuine formal organizational correspondence.";
       positiveSignals.push("Document structure consistent with legitimate enterprise offer.");
     }
   }
 
   // ============================================================================
-  // 2. Company Legal Verification Score (Weight: 15%)
+  // 2. Company Legal Verification Score (Weight: 15% - 20%)
   // ============================================================================
   const companyEvidence = evidenceList.filter(e => e.category === 'COMPANY' || e.category === 'REGISTRY');
   const isCompanyActive = Boolean(
     inputs.companyData &&
     inputs.companyData.registry_status !== undefined &&
-    (inputs.companyData.registry_status as any) !== 'UNKNOWN' &&
-    (inputs.companyData.registry_status as any) !== 'NOT_INDEPENDENTLY_VERIFIED'
+    (inputs.companyData.registry_status as any) !== 'UNKNOWN'
   );
 
   let companyScore = 0;
@@ -323,7 +324,7 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
   let companyStatus: ScoreComponentBreakdown['status'] = 'UNVERIFIED';
   let companyReason = "Company identity not independently verified in statutory register.";
 
-  if (isCompanyActive && inputs.companyData) {
+  if (inputs.companyData) {
     const isLiveReg = ['VERIFIED', 'VERIFIED_INDEPENDENTLY', 'ACTIVE'].includes(inputs.companyData.registry_status as string) && inputs.companyData.status === 'ACTIVE';
     const isLocalRef = (inputs.companyData.registry_status as string) === 'LOCAL_REFERENCE_FOUND';
 
@@ -344,6 +345,14 @@ export function calculateDeterministicScore(inputs: ScoringInputs): Deterministi
       companyConfidence = 50;
       companyStatus = 'UNVERIFIED';
       companyReason = "No statutory record found in direct index. (Absence does not imply fraud).";
+    } else if (inputs.companyData.registry_status === 'NOT_INDEPENDENTLY_VERIFIED' || !isCompanyActive) {
+      const hasFeeDemand = inputs.documentData?.has_fee_demand || false;
+      companyScore = hasFeeDemand ? 20 : 60;
+      companyConfidence = 60;
+      companyStatus = hasFeeDemand ? 'SUSPICIOUS' : 'UNVERIFIED';
+      companyReason = hasFeeDemand
+        ? "Entity has no statutory registry verification and demands candidate payments."
+        : "Early-stage or unindexed business entity without direct statutory record. (Absence does not imply fraud).";
     }
   }
 

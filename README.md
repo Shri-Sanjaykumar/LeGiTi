@@ -194,6 +194,12 @@ Verify that all engines, OCR pipelines, and scoring models are operating with 10
 # Run the complete test suite (118 tests across 28 suites)
 npm test
 
+# Run the live ground-truth document verification (emantra, qskill, clinchsoft, parsebridge)
+npm run test:docs
+
+# Run deep image letter OCR and forensic evaluation
+npm run test:images
+
 # Run the end-to-end ground truth accuracy audit
 npm run audit
 
@@ -208,32 +214,40 @@ npm run verify
 LeGiTi has been audited against real-world test cases:
 
 ```
-================================================================
-       LEGITIFY RIGOROUS ACCURACY & GROUND TRUTH AUDIT
-================================================================
+================================================================================
+               LEGITIFY GROUND TRUTH BENCHMARK AUDIT
+================================================================================
 
-1. REAL FAKE OFFER LETTER (Fee Demand Scam):
-   • Input: Welcome Letter_Shri_Sanjaykumar_V_20260317_052819.pdf
-   • Detected Company: Clinchsoft Technologies
-   • Extracted Fee: ₹1577 via Online Payment Link
-   • Trust Score: 1 / 100 (CRITICAL RISK → LIKELY SCAM)
-   • Status: Confirmed Fee Trap Caught With Zero Delay
+1. VALID / LEGITIMATE INTERNSHIP OFFERS (GREEN VERDICT):
+   • Input: emantra.pdf (Ementora Group of Companies)
+     - Extracted Signatory: "Sudip Das (Authorised Signatory)"
+     - Extracted Address: "West Bengal, India"
+     - Fee Demand: None (Zero-fee learning & live project)
+     - Trust Score: 88 / 100 (LOW RISK → LIKELY LEGITIMATE) [GREEN]
 
-2. 100% GENUINE CORPORATE OFFER LETTER:
-   • Input: Infosys Limited Systems Engineer Offer
-   • Detected Company: Infosys Limited (CIN: L85110KA1981PLC013115)
-   • Compensation: Rs. 4,50,000/- Per Annum (CTC)
-   • Anti-Fraud Clause: Correctly identified as warning notice, NOT a fee demand
-   • Trust Score: 87 / 100 (LOW RISK → LIKELY LEGITIMATE)
-   • Status: Zero False Positives
+   • Input: qskill.pdf (QSkill / Squarcell Resource India Pvt. Ltd.)
+     - Extracted Signatory: "Aisha Ismin (Authorised Signatory)"
+     - Extracted Address: "Navi Mumbai, Maharashtra, India"
+     - Fee Demand: None (Performance-incentivized virtual internship)
+     - Trust Score: 82 / 100 (LOW RISK → LIKELY LEGITIMATE) [GREEN]
 
-3. BRAND IMPERSONATION SCAM:
-   • Input: IndiGo Ground Staff selection claiming InterGlobe Aviation
-   • Recruiter Email: indigo.careers.onboarding@gmail.com
-   • Demanded Fee: ₹1,200 UPI interview slot booking
-   • Trust Score: 1 / 100 (CRITICAL RISK → LIKELY SCAM)
-   • Status: Flagged for Free Webmail + Upfront Fee Demand
-================================================================
+2. REAL FAKE / SCAM OFFER LETTERS (RED VERDICT):
+   • Input: Welcome Letter_Shri_Sanjaykumar_V_20260317_052819.pdf (Clinchsoft)
+     - Extracted Fee: ₹1,577 mandatory registration payment link
+     - Trust Score: 1 / 100 (CRITICAL RISK → LIKELY SCAM) [RED]
+
+   • Input: Welcome_Shri_Sanjaykumar_V_20261016_212601_534155.pdf (Parsebridge)
+     - Extracted Fee: ₹2,150 mandatory security caution fee
+     - Trust Score: 1 / 100 (CRITICAL RISK → LIKELY SCAM) [RED]
+
+   • Input: images (1).jpg (Cognifyz Technologies)
+     - Detection: Unsolicited bulk internship / fake certificates
+     - Trust Score: 9 / 100 (CRITICAL RISK → LIKELY SCAM) [RED]
+
+   • Input: images.jpg (Timmerman Industries / Fake Template)
+     - Detection: Canva template markers ("reallygreatsite.com", dummy text)
+     - Trust Score: 12 / 100 (CRITICAL RISK → LIKELY SCAM) [RED]
+================================================================================
 ```
 
 ---

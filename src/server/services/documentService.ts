@@ -193,6 +193,10 @@ const FRAUD_INDICATORS: [RegExp, number, string][] = [
   [/(offer\s+(will\s+)?(?:expire|be\s+cancelled)|last\s+chance|final\s+call)/i, 0.08, "Pressures with cancellation/expiry threats"],
   [/(?:send|upload|share)\s+(?:aadhaar|pan|passport|bank\s*proof|otp)\s*(?:today|immediately|before\s*joining|for\s*payroll)/i, 0.15, "Demands sensitive identity documents prior to legitimate verification"],
   [/(refer\s+and\s+earn|referral\s+bonus\s+for\s+candidates)/i, 0.10, "Referral scheme pattern"],
+
+  // 5. Template, Placeholder & Synthetic Document Markers
+  [/(?:reallygreatsite\.com|123\s*anywhere\s*st|any\s*city|lorem\s+ipsum|\+123[- ]?456[- ]?7890)/i, 0.35, "Uses generic placeholder/template text (Canva/template artifact)"],
+  [/(?:20[3-9]\d|2[1-9]\d{2})/i, 0.30, "Dates reference impossible future year (>2030) - synthetic template anomaly"],
 ];
 
 const URGENCY_PHRASES = [
@@ -421,19 +425,23 @@ export function extractDocumentSignals(
     }
   }
 
-  // Pattern C: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited, For Squarcell Resource India Pvt. Ltd, InterGlobe Aviation Limited)
+  // Pattern C: Legal entity markers (e.g. Acme Corp Ltd, Tech Solutions Private Limited, For Squarcell Resource India Pvt. Ltd, InterGlobe Aviation Limited, Timmerman Industries)
   if (!detectedCompanyName) {
-    const legalMatch = text.match(/(?:(?:\r?\n|^)\s*For,?\s+|on\s+behalf\s+of\s+|application\s+(?:had\s+)?with|employment\s+with\s+(?!us\b|our\b|the\s+company\b)|appointment\s+at|offer\s+from)\s+([A-Z][A-Za-z0-9 &.,'-]{1,45}?(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Group\s+of\s+Companies))/i)
-      || text.match(/\b([A-Z][A-Za-z0-9&'-]+(?:\s+[A-Z][A-Za-z0-9&'-]+){0,4}\s+(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Enterprises|Infotech|Services|Global|Consultancy|Group\s+of\s+Companies|Aviation\s+Limited))\b/i);
-    if (legalMatch) detectedCompanyName = legalMatch[1].trim();
+    const legalMatch = text.match(/(?:(?:\r?\n|^)\s*For,?\s+|on\s+behalf\s+of\s+|application\s+(?:had\s+)?with|employment\s+with\s+(?!us\b|our\b|the\s+company\b)|appointment\s+at|offer\s+from)\s+([A-Z][A-Za-z0-9 &.,'-]{1,45}?(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Industries|Holdings|Systems|Group\s+of\s+Companies))/i)
+      || text.match(/\b([A-Z][A-Za-z0-9&'-]+(?:[ \t]+[A-Z][A-Za-z0-9&'-]+){0,4}[ \t]+(?:Private\s+Limited|Pvt\s+Ltd\.?|Limited|Ltd\.?|LLP|LLC|Corporation|Corp\.?|Inc\.?|Technologies|Solutions|Enterprises|Industries|Holdings|Systems|Consulting|Ventures|Labs|Infotech|Services|Global|Consultancy|Group\s+of\s+Companies|Aviation\s+Limited))\b/i);
+    if (legalMatch) detectedCompanyName = legalMatch[1].split(/[\r\n]/)[0].trim();
   }
 
-  // Pattern D: Formal sign-off entity (Yours truly Clinchsoft Technologies, Founder & CEO Ementora)
+  // Pattern D: Formal sign-off entity (e.g. For Clinchsoft Technologies, Yours truly Ementora)
   if (!detectedCompanyName) {
     const signoffMatch = text.match(/(?:Yours\s+(?:truly|faithfully|sincerely)|Warm\s+regards|Regards)[,\s\n]+([A-Z][A-Za-z0-9&.,' -]{2,45})/i)
       || text.match(/(?:Founder\s+&\s+CEO|Director|HR\s+Manager|Authori[sz]ed\s+Signatory)[,\s\n]+([A-Z][A-Za-z0-9&.,' -]{2,45})/i);
-    if (signoffMatch && !/(?:hr|manager|director|team|candidate|regards)/i.test(signoffMatch[1])) {
-      detectedCompanyName = signoffMatch[1].trim();
+    if (signoffMatch) {
+      const cand = signoffMatch[1].split(/[\r\n]/)[0].trim();
+      const isEntity = /(?:Private|Limited|Ltd|LLP|LLC|Corp|Inc|Technologies|Solutions|Enterprises|Industries|Holdings|Systems|Services|Group|Consultancy|Firm|Agency|Company)/i.test(cand);
+      if (isEntity && !/(?:hr|manager|director|team|candidate|regards)/i.test(cand)) {
+        detectedCompanyName = cand;
+      }
     }
   }
 
@@ -584,13 +592,14 @@ export function extractDocumentSignals(
   }
 
   let absencePenalty = 0.0;
-  if (criticalGenuineTotal > 0) {
+  const isInternshipOffer = /(?:internship|intern\b)/i.test(text);
+  if (criticalGenuineTotal > 0 && !(isInternshipOffer && !hasPositiveFeeExplicit)) {
     const ratio = criticalGenuineMatches / criticalGenuineTotal;
     if (ratio < 0.2) absencePenalty = 0.12;
     else if (ratio < 0.4) absencePenalty = 0.07;
     else if (ratio < 0.6) absencePenalty = 0.03;
   }
-  if (genuineMatches === 0) absencePenalty += 0.10;
+  if (genuineMatches === 0 && !isInternshipOffer) absencePenalty += 0.10;
 
   let nlpConfidence = 0.5;
   genuineBoost = Math.min(genuineBoost, 0.40);
@@ -622,18 +631,19 @@ export function extractDocumentSignals(
   // Full signature forensics is delegated to visualForensicsService.ts
   // A scammer can insert a signature; absence of a text-detectable signatory is NOT proof of fraud.
   const signatoryBlockMatch = text.match(
-    /(?:hr\s+manager|human\s+resources|authorized\s+signatory|sincerely|regards|yours\s+(?:faithfully|truly)|head\s+-?\s*hr|director|talent\s+acquisition)[,\s:]*\n?\s*([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)/i
+    /(?:hr\s+manager|human\s+resources|authori[sz]ed\s+signatory|sincerely|regards|yours\s+(?:faithfully|truly)|head\s+-?\s*hr|director|talent\s+acquisition)[,\s:]*\r?\n\s*([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)/i
   );
   let detectedSignatory: string | undefined;
   if (signatoryBlockMatch && signatoryBlockMatch[1]) {
-    detectedSignatory = signatoryBlockMatch[1].trim();
+    const rawLine = signatoryBlockMatch[1].split(/[\r\n,]/)[0].trim();
+    detectedSignatory = rawLine.replace(/\s+(?:Founder|CEO|Director|HR|Manager|Signatory|Head|For|Squarcell).*$/i, '').trim();
   } else {
     const altSignMatch = text.match(/(?:signed\s+by|signatory\s*:\s*|name\s*:\s*)([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)/i)
-      || text.match(/([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)\s*\n\s*(?:HR\s+Manager|Authorized\s+Signatory|Human\s+Resources|Director)/i);
+      || text.match(/([A-Z][a-z]+(?:\s+[A-Z]\.?\s*)?(?:\s+[A-Z][a-z]+)+)\s*\r?\n\s*(?:HR\s+Manager|Authori[sz]ed\s+Signatory|Human\s+Resources|Director|Founder)/i);
     if (altSignMatch && altSignMatch[1]) {
-      detectedSignatory = altSignMatch[1].trim();
+      detectedSignatory = altSignMatch[1].split(/[\r\n,]/)[0].trim();
     } else {
-      const titleMatch = text.match(/\b(HR\s+Manager|Authorized\s+Signatory|Director\s+of\s+HR|Head\s+of\s+Talent|Placement\s+Officer)\b/i);
+      const titleMatch = text.match(/\b(HR\s+Manager|Authori[sz]ed\s+Signatory|Director\s+of\s+HR|Head\s+of\s+Talent|Placement\s+Officer|Founder\s+&\s+CEO)\b/i);
       if (titleMatch) {
         detectedSignatory = titleMatch[1].trim();
       }
@@ -652,33 +662,30 @@ export function extractDocumentSignals(
   }
 
   const hasCorporateEmail = emails.some(e => !PERSONAL_EMAIL_DOMAINS.has(e.split('@')[1]?.toLowerCase() || ''));
+  const hasWebChannels = urls.length > 0 || /(?:https?:\/\/|www\.|\.in\b|\.com\b|\.org\b|official|linkedin|instagram|twitter|github)/i.test(text);
   let contactCheck = 0.0;
   if (hasCorporateEmail && phones.length > 0) contactCheck = 1.0;
   else if (hasCorporateEmail) contactCheck = 0.8;
-  else if (emails.length > 0 && phones.length > 0) contactCheck = 0.5;
-  else if (emails.length > 0 || phones.length > 0) contactCheck = 0.3;
+  else if (emails.length > 0 && phones.length > 0) contactCheck = 0.6;
+  else if (emails.length > 0 || phones.length > 0) contactCheck = 0.5;
+  else if (hasWebChannels) contactCheck = 0.4;
   else {
+    contactCheck = 0.2;
     flags.push({
       rule: "ner_contact",
-      severity: "high",
-      message: "No contact information (email or phone) found in the letter.",
-      score: 0.0,
+      severity: hasPositiveFeeExplicit ? "high" : "low",
+      message: "No direct corporate contact information found in letter text.",
+      score: 0.2,
     });
   }
 
-  const hasAddress = /(?:address|office|building|tower|sector|plot|bangalore|bengaluru|mumbai|delhi|hyderabad|pune|chennai|noida|gurugram|kolkata)/i.test(textLower);
+  const hasAddress = /(?:address|office|building|tower|sector|plot|road|street|nagar|park|plaza|hub|floor|campus|suite|block|maharashtra|karnataka|tamil\s*nadu|west\s*bengal|delhi|gujarat|telangana|andhra|kerala|uttar\s*pradesh|rajasthan|punjab|haryana|madhya\s*pradesh|bihar|odisha|assam|jharkhand|bengaluru|bangalore|mumbai|navi\s*mumbai|delhi|new\s*delhi|hyderabad|pune|chennai|noida|gurugram|gurgaon|kolkata|ahmedabad|surat|jaipur|lucknow|indore|bhopal|coimbatore|kochi|thiruvananthapuram|india)/i.test(textLower);
   const locationCheck = hasAddress ? 1.0 : (text.length > 300 ? 0.0 : 0.5);
   if (!hasAddress && text.length > 300) {
     flags.push({
       rule: "ner_location",
-      severity: "medium",
+      severity: hasPositiveFeeExplicit ? "medium" : "low",
       message: "No company location/address identified in the letter.",
-      score: 0.0,
-    });
-    flags.push({
-      rule: "missing_fields",
-      severity: "low",
-      message: "Letter is missing: company address.",
       score: 0.0,
     });
   }
@@ -1207,7 +1214,7 @@ export function extractDocumentSignals(
     extracted_claims,
     sanitized_evidence_block: text.slice(0, 1000),
     has_fee_demand: isFeeDemand,
-    is_suspicious_offer_letter: finalVerdict !== "LIKELY GENUINE" || finalPercent < 70 || isFeeDemand || flags.length >= 2,
+    is_suspicious_offer_letter: isFeeDemand || finalVerdict === "LIKELY FAKE" || (finalVerdict === "SUSPICIOUS" && finalPercent < 55) || flags.filter(f => f.severity === 'critical' || f.severity === 'high').length >= 2,
     detected_company_name: detectedCompanyName,
     detected_signatory: detectedSignatory,
     detected_domain: emails[0]?.split('@')[1]?.toLowerCase(),

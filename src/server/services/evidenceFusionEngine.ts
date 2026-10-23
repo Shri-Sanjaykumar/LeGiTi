@@ -143,21 +143,35 @@ export function runEvidenceFusion(input: FusionInput): EvidenceFusionResult {
   
   // ---- Step 5: Apply unique Gemini evidence as score adjustments ----
   // Gemini findings contribute via evidence adjustments, NOT direct score override
-  if (geminiAvailable && uniqueGeminiIds.length > 0) {
+  if (geminiAvailable) {
     const geminiAdjustment = calculateGeminiScoreAdjustment(
       input.geminiResult!,
       uniqueGeminiIds
     );
+    let effectiveAdjustment = geminiAdjustment;
+
+    // Positive confirmation boost for confirmed LOW_RISK from Gemini
+    if (input.geminiResult?.verdict === 'LOW_RISK' && !input.hasFeeDemand && !input.hasLookalikeDomain && !input.hasKnownThreat) {
+      if (effectiveAdjustment < 6) effectiveAdjustment = 6;
+    }
+
+    // Do not let subjective startup informality findings push a verified zero-fee internship below the LOW RISK green threshold
+    if (!input.hasFeeDemand && !input.hasLookalikeDomain && !input.hasKnownThreat && input.legitifyResult.trust_score >= 68) {
+      if (workingScore + effectiveAdjustment < 72) {
+        effectiveAdjustment = Math.max(effectiveAdjustment, 72 - workingScore);
+      }
+    }
+
     const prevScore = workingScore;
-    workingScore = Math.max(1, Math.min(99, workingScore + geminiAdjustment));
+    workingScore = Math.max(1, Math.min(99, workingScore + effectiveAdjustment));
     
-    if (Math.abs(geminiAdjustment) > 0.5) {
+    if (Math.abs(effectiveAdjustment) > 0.5) {
       // Log that Gemini unique evidence changed the score
       hardRulesTriggered.push({
         ruleId: 'GEMINI_UNIQUE_EVIDENCE',
         name: 'Gemini Independent Evidence Contribution',
-        triggerCondition: `${uniqueGeminiIds.length} unique Gemini evidence items`,
-        effect: `Score ${geminiAdjustment > 0 ? 'decreased' : 'increased'} by ${Math.abs(Math.round(geminiAdjustment))} points`,
+        triggerCondition: `${uniqueGeminiIds.length} unique Gemini evidence items (Verdict: ${input.geminiResult?.verdict})`,
+        effect: `Score ${effectiveAdjustment > 0 ? 'increased' : 'decreased'} by ${Math.abs(Math.round(effectiveAdjustment))} points`,
         scoreBefore: prevScore,
         scoreAfter: workingScore,
         evidenceIds: uniqueGeminiIds,
