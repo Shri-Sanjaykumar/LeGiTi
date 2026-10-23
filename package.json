@@ -10,6 +10,7 @@
     "build": "vite build",
     "seed": "tsx src/server/seed.ts",
     "test": "tsx --test src/server/__tests__/*.test.ts",
+    "test:apis": "tsx scripts/verify_all_apis.ts",
     "audit": "tsx scripts/audit_accuracy.ts",
     "verify": "tsx --test src/server/__tests__/*.test.ts && vite build"
   },
